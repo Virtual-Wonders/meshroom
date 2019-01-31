@@ -86,6 +86,14 @@ class DepthMapFilter(desc.CommandLineNode):
             uid=[0],
             advanced=True,
         ),
+        desc.BoolParam(
+            name='computeNormalMaps',
+            label='Compute Normal Maps',
+            description='Compute normal maps per depth map.',
+            value=False,
+            uid=[],
+            advanced=True,
+        ),
         desc.ChoiceParam(
             name='verboseLevel',
             label='Verbose Level',
