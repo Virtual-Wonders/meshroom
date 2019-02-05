@@ -4,10 +4,12 @@
 import os
 import json
 
-import simpleFarm
 from meshroom.core.desc import Level
 from meshroom.core.submitter import BaseSubmitter
-
+from meshroomTasks import runTask
+from celery import chain
+#import meshroom.submitters.meshroomTasks.runTask
+ 
 currentDir = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -34,8 +36,8 @@ class SimpleFarmSubmitter(BaseSubmitter):
         print('node: ', node.name)
         if node.isParallelized:
             blockSize, fullSize, nbBlocks = node.nodeDesc.parallelization.getSizes(node)
-            parallelArgs = ' --iteration @start'
-            arguments.update({'start': 0, 'end': nbBlocks - 1, 'step': 1})
+            parallelArgs = ' --iteration 0'
+            arguments.update({'start': 0, 'end': nbBlocks - 1, 'step': 1}) 
 
         tags['nbFrames'] = nbFrames
         tags['prod'] = self.prod
@@ -44,15 +46,12 @@ class SimpleFarmSubmitter(BaseSubmitter):
         allRequirements.extend(self.config['RAM'].get(node.nodeDesc.ram.name, []))
         allRequirements.extend(self.config['GPU'].get(node.nodeDesc.gpu.name, []))
 
-        task = simpleFarm.Task(
-            name=node.nodeType,
-            command='meshroom_compute --node {nodeName} "{meshroomFile}" {parallelArgs} --extern'.format(
-                nodeName=node.name, meshroomFile=meshroomFile, parallelArgs=parallelArgs),
-            tags=tags,
-            rezPackages=[self.MESHROOM_PACKAGE],
-            requirements={'service': str(','.join(allRequirements))},
-            **arguments)
-        return task
+
+        result = runTask.delay(node.name, meshroomFile, parallelArgs)
+        result.get()
+        #return[node.name, meshroomFile, parallelArgs]
+
+        
 
     def submit(self, nodes, edges, filepath):
         name = os.path.splitext(os.path.basename(filepath))[0] + ' [Meshroom]'
@@ -65,22 +64,39 @@ class SimpleFarmSubmitter(BaseSubmitter):
             'comment': comment,
         }
 
-        # Create Job Graph
-        job = simpleFarm.Job(name, tags=mainTags)
+        # # Create Job Graph
+        # job = simpleFarm.Job(name, tags=mainTags)
 
-        nodeNameToTask = {}
+        # nodeNameToTask = {}
+
+        # for node in nodes:
+        #     task = self.createTask(filepath, node)
+        #     job.addTask(task)
+        #     nodeNameToTask[node.name] = task
+
+        # for u, v in edges:
+        #     nodeNameToTask[u.name].dependsOn(nodeNameToTask[v.name])
+
+        # if self.engine == 'tractor-dummy':
+        #     job.submit(share=self.share, engine='tractor', execute=True)
+        #     return True
+        # else:
+        #     res = job.submit(share=self.share, engine=self.engine)
+        #     return len(res) > 0
+
+
+
+        # subtasks = []
+
+        # for node in nodes:
+        #     args = self.createTask(filepath, node)
+        #     #argumentList.append(self.createTask(filepath, node))
+        #     subtasks.append(runTask.s(nodeName=args[0], meshroomFile=args[1], parallelArgs=args[2]))
+
+        # workflow = chain(*subtasks)
+        # workflow.delay()
+
+
 
         for node in nodes:
-            task = self.createTask(filepath, node)
-            job.addTask(task)
-            nodeNameToTask[node.name] = task
-
-        for u, v in edges:
-            nodeNameToTask[u.name].dependsOn(nodeNameToTask[v.name])
-
-        if self.engine == 'tractor-dummy':
-            job.submit(share=self.share, engine='tractor', execute=True)
-            return True
-        else:
-            res = job.submit(share=self.share, engine=self.engine)
-            return len(res) > 0
+            self.createTask(filepath, node)
